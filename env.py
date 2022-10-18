@@ -1,4 +1,6 @@
 # -*- coding: UTF-8 -*-
+import os
+import load_trace
 import numpy as np
 
 MILLISECONDS_IN_SECOND = 1000.0
@@ -6,8 +8,7 @@ B_IN_MB = 1000000.0
 BITS_IN_BYTE = 8.0
 RANDOM_SEED = 42
 VIDEO_CHUNCK_LEN = 4000.0  # millisec, every time add this amount to buffer
-BITRATE_LEVELS = 6
-TOTAL_VIDEO_CHUNCK = 48
+BITRATE_LEVELS = 5
 BUFFER_THRESH = 60.0 * MILLISECONDS_IN_SECOND  # millisec, max buffer limit
 DRAIN_BUFFER_SLEEP_TIME = 500.0  # millisec
 PACKET_PAYLOAD_PORTION = 0.95
@@ -15,7 +16,8 @@ LINK_RTT = 80  # millisec
 PACKET_SIZE = 1500  # bytes
 NOISE_LOW = 0.9
 NOISE_HIGH = 1.1
-VIDEO_SIZE_FILE = './video_size_'
+VIDEO_SIZE_FILE = './videos/'
+TRAIN_TRACES = './dateset/'
 
 
 class Environment:
@@ -42,14 +44,22 @@ class Environment:
         # 从这一条track中随机挑选一个时间点开始，当到末尾了从0开始
         self.mahimahi_ptr = np.random.randint(1, len(self.cooked_bw))
         self.last_mahimahi_time = self.cooked_time[self.mahimahi_ptr - 1]
-
+        self.video_files = os.listdir(VIDEO_SIZE_FILE)
+        self.video_idx = 0
         self.video_size = {}  # in bytes
+        self.TOTAL_VIDEO_CHUNCK = 0
         # 加载不同视频文件的大小
-        for bitrate in range(BITRATE_LEVELS):
-            self.video_size[bitrate] = []
-            with open(VIDEO_SIZE_FILE + str(bitrate)) as f:
-                for line in f:
-                    self.video_size[bitrate].append(int(line.split()[0]))
+        self.set_video_size()
+
+    def set_video_size(self):
+        self.video_idx = np.random.randint(0, len(self.video_files))
+        file_path = VIDEO_SIZE_FILE + self.video_files[self.video_idx]
+        bitrate = 0
+        with open(file_path, 'rb') as f:
+            for line in f:
+                self.video_size[bitrate] = np.array(line.split(), dtype=int).tolist()
+                bitrate += 1
+        self.TOTAL_VIDEO_CHUNCK = len(self.video_size[0])
 
     def get_video_chunk(self, quality):
 
@@ -148,10 +158,10 @@ class Environment:
         return_buffer_size = self.buffer_size
 
         self.video_chunk_counter += 1
-        video_chunk_remain = TOTAL_VIDEO_CHUNCK - self.video_chunk_counter
+        video_chunk_remain = self.TOTAL_VIDEO_CHUNCK - self.video_chunk_counter
 
         end_of_video = False
-        if self.video_chunk_counter >= TOTAL_VIDEO_CHUNCK:
+        if self.video_chunk_counter >= self.TOTAL_VIDEO_CHUNCK:
             end_of_video = True
             self.buffer_size = 0
             self.video_chunk_counter = 0
@@ -165,6 +175,7 @@ class Environment:
             # note: trace file starts with time 0
             self.mahimahi_ptr = np.random.randint(1, len(self.cooked_bw))
             self.last_mahimahi_time = self.cooked_time[self.mahimahi_ptr - 1]
+            self.set_video_size()
 
         next_video_chunk_sizes = []
         for i in range(BITRATE_LEVELS):
@@ -180,15 +191,26 @@ class Environment:
             video_chunk_remain
 
 
-import load_trace
-TRAIN_TRACES = './dateset/'
+def test():
+    video_files = os.listdir(VIDEO_SIZE_FILE)
+    for video_file in video_files:
+        file_path = VIDEO_SIZE_FILE + video_file
+        video_size = {}
+        bitrate = 0
+        with open(file_path, 'rb') as f:
+            for line in f:
+                video_size[bitrate] = np.array(line.split(), dtype=int).tolist()
+                bitrate += 1
+    print("end")
+
 
 if __name__ == '__main__':
+    # test()
     all_cooked_time, all_cooked_bw, _ = load_trace.load_trace(TRAIN_TRACES)
     net_env = Environment(all_cooked_time=all_cooked_time,
                               all_cooked_bw=all_cooked_bw,
                               random_seed=1)
-    for i in range(2):
+    while True:
         delay, sleep_time, buffer_size, rebuf, \
         video_chunk_size, next_video_chunk_sizes, \
         end_of_video, video_chunk_remain = \

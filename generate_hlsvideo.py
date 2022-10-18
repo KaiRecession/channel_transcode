@@ -37,7 +37,7 @@ def main():
             size = []
             for _ in range(num_chunks):
                 noise = np.random.normal(1, size_noise)
-                size.append(round((item / 8.0 * length_video * noise)))
+                size.append(round((item / 8.0 * 1000 * length_video * noise)))
             video_sub.append(size)
         # print("end")
         data_write(video_sub, './videos/hls_' + i.__str__())

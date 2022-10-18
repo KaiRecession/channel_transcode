@@ -1,8 +1,10 @@
+import numpy as np
 import tensorflow
 
 
 def print_hi(name):
     # Use a breakpoint in the code line below to debug your script.
+    s_batch = [np.zeros((6, 8))]
     print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
 
 
