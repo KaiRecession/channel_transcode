@@ -99,13 +99,21 @@ def generate_trace(num_file, time_length):
         data_write(rate, "./dateset/" + str(i))
 
 
+def generate_trace_special(time_length):
+    data = generate_CSI(time_length)
+    # a = [r_pro[temp_r]]
+    rate = calc_rate(data, tf.constant([[0.25, 0.25, 0.25, 0.25]]), tf.constant([[0.1, 0.8, 0.1]]))
+    os.system("rm -rf " + "./test_dateset/" + "special_trace")
+    # data_write([time_length], "./dateset/" + str(i))
+    data_write(rate, "./test_dateset/" + "special_trace")
 def main():
     print("generate_dateset is done.")
 
 
 if __name__ == '__main__':
+    generate_trace_special(60)
     # index = [i for i in range(10) if i % 2 == 0]
-    generate_trace(100, 2000)
+    # generate_trace(100, 2000)
     # main()
     # # print(np.log(2))
     # result = []

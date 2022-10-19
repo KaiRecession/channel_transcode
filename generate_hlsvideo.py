@@ -37,6 +37,7 @@ def main():
             size = []
             for _ in range(num_chunks):
                 noise = np.random.normal(1, size_noise)
+                # 已经变成了byte单位里，不是bit
                 size.append(round((item / 8.0 * 1000 * length_video * noise)))
             video_sub.append(size)
         # print("end")
@@ -45,9 +46,24 @@ def main():
         # print(test == np.array(video_sub))
 
 
+def generate_hls_special():
+    num_chunks = 15 * 5
+    video_sub = []
+    for item in VIDEO_BIT_RATE:
+        size = []
+        for _ in range(num_chunks):
+            noise = np.random.normal(1, size_noise)
+            # 已经变成了byte单位里，不是bit
+            size.append(round((item / 8.0 * 1000 * length_video * noise)))
+        video_sub.append(size)
+    # print("end")
+    data_write(video_sub, './test_dateset/special_videos')
+
+
 if __name__ == '__main__':
-    os.system("rm -rf " + "./videos")
-    os.system("mkdir " + "./videos")
-    # data_write([time_length], "./dateset/" + str(i))
-    main()
+    generate_hls_special()
+    # os.system("rm -rf " + "./videos")
+    # os.system("mkdir " + "./videos")
+    # # data_write([time_length], "./dateset/" + str(i))
+    # main()
 

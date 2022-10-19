@@ -190,6 +190,19 @@ class Environment:
             end_of_video, \
             video_chunk_remain
 
+    def test_chunk(self, cooked_time, cooked_bw):
+        self.cooked_time = cooked_time
+        self.cooked_bw = cooked_bw
+        self.mahimahi_ptr = 1
+        self.last_mahimahi_time = 0
+
+        file_path = 'test_dateset/special_videos'
+        bitrate = 0
+        with open(file_path, 'rb') as f:
+            for line in f:
+                self.video_size[bitrate] = np.array(line.split(), dtype=int).tolist()
+                bitrate += 1
+        self.TOTAL_VIDEO_CHUNCK = len(self.video_size[0])
 
 def test():
     video_files = os.listdir(VIDEO_SIZE_FILE)
