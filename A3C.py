@@ -1,6 +1,7 @@
 import multiprocessing
+import os
 import threading
-import env
+import env as env
 import gym
 import numpy as np
 import tensorflow as tf
@@ -10,6 +11,7 @@ from queue import Queue
 from tensorflow.keras import layers, optimizers, Model
 
 import load_trace
+import model_test
 
 plt.rcParams['font.size'] = 18
 plt.rcParams['figure.titlesize'] = 18
@@ -232,6 +234,9 @@ class Worker(threading.Thread):
                     mem.clear()
                     self.result_queue.put(epoch_reward)
                     print("epoch=%s," % epi_counter, "worker=%s," % self.worker_id, "reward=%s" % epoch_reward)
+                    if self.worker_id == 0:
+                        tf.saved_model.save(self.server, 'model/0')
+                        os.system('python model_test.py')
                     break
         # 放入None表示结束
         self.result_queue.put(None)
@@ -245,7 +250,7 @@ class Worker(threading.Thread):
             reward_sum = self.client(tf.constant(new_state[None, :], dtype=tf.float32))[-1].numpy()[0]
         discounted_rewards = []
         for reward in memory.rewards[::-1]:
-            reward_sum = reward + gamma * reward_sum
+            reward_sum = reward + gamma * reward_sum / self.env.TOTAL_VIDEO_CHUNCK
             discounted_rewards.append(reward_sum)
         # 倒着计算reward后，把列表反转，回到正常的顺序
         discounted_rewards.reverse()
