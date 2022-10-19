@@ -205,11 +205,11 @@ class Worker(threading.Thread):
                 probs = tf.nn.softmax(logits)
                 # print(probs)
                 # 按照概率选择action, np.random.choice中的5代表从0-5筛选
-                action = np.random.choice(5, p=probs.numpy()[0])
+                bit_rate = np.random.choice(5, p=probs.numpy()[0])
                 # print(action)
                 delay, sleep_time, buffer_size, rebuf, \
                 video_chunk_size, next_video_chunk_sizes, \
-                end_of_video, video_chunk_remain = self.env.get_video_chunk(action)
+                end_of_video, video_chunk_remain = self.env.get_video_chunk(bit_rate)
                 reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
                          - 4.3 * rebuf \
                          - 1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
@@ -217,9 +217,11 @@ class Worker(threading.Thread):
                 done = end_of_video
                 # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
                 epoch_reward += reward
-                mem.store(current_state, action, reward)
+                # 存储的state和action必须是同一对输入输出，reward也是这次action的reward
+                mem.store(current_state, bit_rate, reward)
                 # 这个step是本次轨迹走过的步数
                 epoch_steps += 1
+                last_bit_rate = bit_rate
 
                 new_state = current_state
                 if done:

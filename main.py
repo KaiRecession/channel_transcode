@@ -5,6 +5,11 @@ import tensorflow
 def print_hi(name):
     # Use a breakpoint in the code line below to debug your script.
     s_batch = [np.zeros((6, 8))]
+    a = [[1, 2, 4],
+         [2, 3, 4],
+         [7, 8, 9]]
+    a = np.roll(a, 1, axis=1)
+    print(a)
     print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
 
 
