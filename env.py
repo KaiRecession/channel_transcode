@@ -61,6 +61,10 @@ class Environment:
                 bitrate += 1
         self.TOTAL_VIDEO_CHUNCK = len(self.video_size[0])
 
+    # MPC专用函数
+    def get_video_chunk_size(self, quality, index):
+        return self.video_size[quality][index]
+
     def get_video_chunk(self, quality):
 
         assert quality >= 0
@@ -190,6 +194,7 @@ class Environment:
             end_of_video, \
             video_chunk_remain
 
+    # 设置了指定的网络轨迹之后同时默认指定了相应的指定测试视频块
     def test_chunk(self, cooked_time, cooked_bw):
         self.cooked_time = cooked_time
         self.cooked_bw = cooked_bw

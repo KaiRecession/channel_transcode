@@ -96,8 +96,6 @@ def train_test_plot(trace_path):
                           all_cooked_bw=all_cooked_bw,
                           random_seed=1)
 
-
-    file_path = 'test_dateset/special_trace'
     cooked_time = []
     cooked_bw = []
     # print file_path
@@ -106,7 +104,7 @@ def train_test_plot(trace_path):
             parse = line.split()
             cooked_time.append(float(parse[0]))
             cooked_bw.append(float(parse[1]))
-    #  test_chunk中指定了视频
+    #  test_chunk中不仅指定了轨迹，同时指定了视频
     env.test_chunk(cooked_time, cooked_bw)
 
 
@@ -142,8 +140,7 @@ def train_test_plot(trace_path):
             # 转换成10s一格
             state[3, -1] = float(rebuf) / 10.0  # 10 sec
             state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
-            state[5, -1] = np.minimum(video_chunk_remain, env.TOTAL_VIDEO_CHUNCK) / float(
-                env.TOTAL_VIDEO_CHUNCK)
+            state[5, -1] = np.minimum(video_chunk_remain, env.TOTAL_VIDEO_CHUNCK) / float(env.TOTAL_VIDEO_CHUNCK)
             current_state = np.reshape(state, (1, 6, 8))
             bandwidth.append(state[2, -1] * 8 * 1000)
             bitrate_choice.append(VIDEO_BIT_RATE[bit_rate])
@@ -193,11 +190,13 @@ def train_test_plot(trace_path):
     plt.plot(index, bandwidth, color='red')
 
     plt.plot(index, bitrate_choice)
+    plt.ylabel(trace_path)
     plt.show()
     plt.plot(index, buffer_status)
     plt.show()
     plt.plot(index, rebuf_status)
     plt.show()
+    print(result)
     return np.sum(result)
 
 
@@ -210,4 +209,5 @@ if __name__ == '__main__':
         file_path = test_dateset_path + cooked_file
         result.append(train_test_plot(file_path))
     print(f'test中的reward平均10个总和为：{np.sum(result) / len(result)}')
+    print(result)
     data_write(np.reshape(np.sum(result) / len(result), (1, -1)), './test_log')
