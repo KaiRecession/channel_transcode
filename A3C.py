@@ -195,7 +195,7 @@ class Worker(threading.Thread):
                 state[1, -1] = buffer_size / 10  # 10 sec
                 state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
                 # 转换成10s一格
-                state[3, -1] = float(rebuf) / 1000.0 / 10.0  # 10 sec
+                state[3, -1] = float(rebuf) / 10.0  # 10 sec
                 state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
                 state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(self.env.TOTAL_VIDEO_CHUNCK)
                 current_state = np.reshape(state, (1, 6, 8))
@@ -211,7 +211,7 @@ class Worker(threading.Thread):
                 video_chunk_size, next_video_chunk_sizes, \
                 end_of_video, video_chunk_remain = self.env.get_video_chunk(bit_rate)
                 reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
-                         - 4.3 * rebuf \
+                         - 10 * rebuf \
                          - 1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
                                                    VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
                 done = end_of_video

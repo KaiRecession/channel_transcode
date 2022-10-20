@@ -1,10 +1,12 @@
+import os
+
 from matplotlib import pyplot as plt
 
 import load_trace
 import tensorflow as tf
 import numpy as np
 
-from data_load_fix import data_write
+from data_load_fix import data_write, data_load
 
 tf.random.set_seed(1231)
 np.random.seed(1231)
@@ -44,7 +46,7 @@ def train_test():
                 state[1, -1] = buffer_size / 10  # 10 sec
                 state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
                 # 转换成10s一格
-                state[3, -1] = float(rebuf) / 1000.0 / 10.0  # 10 sec
+                state[3, -1] = float(rebuf) / 10.0  # 10 sec
                 state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
                 state[5, -1] = np.minimum(video_chunk_remain, env.TOTAL_VIDEO_CHUNCK) / float(
                     env.TOTAL_VIDEO_CHUNCK)
@@ -87,7 +89,7 @@ def train_test_plot():
     server = tf.saved_model.load('./model/0')
     env = env.Environment(all_cooked_time=all_cooked_time,
                           all_cooked_bw=all_cooked_bw,
-                          random_seed=4)
+                          random_seed=1)
 
 
     file_path = 'test_dateset/special_trace'
@@ -106,6 +108,8 @@ def train_test_plot():
     bandwidth = []
     bitrate_choice = []
     buffer_status = []
+    rebuf_status = []
+    reward_record = []
     for epi_counter in range(1):
         # print(f'epi_counter: {epi_counter}')
         # 初始化的时候设置值
@@ -130,7 +134,7 @@ def train_test_plot():
             # 过去时间点的带宽
             state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
             # 转换成10s一格
-            state[3, -1] = float(rebuf) / 1000.0 / 10.0  # 10 sec
+            state[3, -1] = float(rebuf) / 10.0  # 10 sec
             state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
             state[5, -1] = np.minimum(video_chunk_remain, env.TOTAL_VIDEO_CHUNCK) / float(
                 env.TOTAL_VIDEO_CHUNCK)
@@ -138,6 +142,7 @@ def train_test_plot():
             bandwidth.append(state[2, -1] * 8 * 1000)
             bitrate_choice.append(VIDEO_BIT_RATE[bit_rate])
             buffer_status.append(state[1, -1] * 10)
+            rebuf_status.append(rebuf)
 
             logits, _ = server(tf.constant(current_state, dtype=tf.float32))
             # print(logits)
@@ -150,12 +155,13 @@ def train_test_plot():
             video_chunk_size, next_video_chunk_sizes, \
             end_of_video, video_chunk_remain = env.get_video_chunk(bit_rate)
             reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
-                     - 4.3 * rebuf \
+                     - 40 * rebuf \
                      - 1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
                                   VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
             done = end_of_video
             # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
             epoch_reward += reward
+            reward_record.append(reward)
             # 这个step是本次轨迹走过的步数
             epoch_steps += 1
             last_bit_rate = bit_rate
@@ -164,19 +170,28 @@ def train_test_plot():
                 result.append(epoch_reward)
                 break
     print(f'test中的reward平均10个总和为：{np.sum(result)}, video_id:{env.video_idx}, trace_id:{env.trace_idx}')
+    best = data_load('temp_best_result')[0]
+    if np.sum(result) > best:
+        os.system("rm -rf " + "temp_best_result")
+        data_write([np.sum(result)], 'temp_best_result')
+        tf.saved_model.save(server, 'best_model/0')
+
+    results = []
+    results.append(np.sum(result))
+    results.append(env.video_idx)
+    results.append(env.trace_idx)
+    data_write(np.reshape(results, (1, -1)), './test_log')
     # 画图部分，测试时注释掉
-    # results = []
-    # results.append(np.sum(result))
-    # results.append(env.video_idx)
-    # results.append(env.trace_idx)
-    # data_write(np.reshape(results, (1, -1)), './test_log')
-    # index = [i for i in range(len(bandwidth))]
-    # plt.plot(index, bandwidth)
-    # plt.show()
-    # plt.plot(index, bitrate_choice)
-    # plt.show()
-    # plt.plot(index, buffer_status)
-    # plt.show()
+    index = [i for i in range(len(bandwidth))]
+
+    plt.plot(index, bandwidth, color='red')
+
+    plt.plot(index, bitrate_choice)
+    plt.show()
+    plt.plot(index, buffer_status)
+    plt.show()
+    plt.plot(index, rebuf_status)
+    plt.show()
 
 
 if __name__ == '__main__':
