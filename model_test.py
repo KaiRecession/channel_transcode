@@ -7,6 +7,8 @@ import tensorflow as tf
 import numpy as np
 
 from data_load_fix import data_write, data_load
+import warnings
+warnings.filterwarnings('ignore')
 
 tf.random.set_seed(1231)
 np.random.seed(1231)
@@ -16,6 +18,7 @@ VIDEO_BIT_RATE = [1000, 2000, 3000, 4000, 4750]
 from tensorflow.keras import layers, optimizers, Model
 
 
+# 随机挑选一个轨迹和视频
 def train_test():
         import env
         server = tf.saved_model.load('./model/0')
@@ -84,7 +87,9 @@ def train_test():
         results.append(env.trace_idx)
         data_write(np.reshape(results, (1, -1)), './test_log')
 
-def train_test_plot():
+
+# 挑选指定的视频
+def train_test_plot(trace_path):
     import env
     server = tf.saved_model.load('./model/0')
     env = env.Environment(all_cooked_time=all_cooked_time,
@@ -96,11 +101,12 @@ def train_test_plot():
     cooked_time = []
     cooked_bw = []
     # print file_path
-    with open(file_path, 'rb') as f:
+    with open(trace_path, 'rb') as f:
         for line in f:
             parse = line.split()
             cooked_time.append(float(parse[0]))
             cooked_bw.append(float(parse[1]))
+    #  test_chunk中指定了视频
     env.test_chunk(cooked_time, cooked_bw)
 
 
@@ -155,8 +161,8 @@ def train_test_plot():
             video_chunk_size, next_video_chunk_sizes, \
             end_of_video, video_chunk_remain = env.get_video_chunk(bit_rate)
             reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
-                     - 40 * rebuf \
-                     - 1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
+                     - 10 * rebuf \
+                     - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
                                   VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
             done = end_of_video
             # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
@@ -169,7 +175,7 @@ def train_test_plot():
             if done:
                 result.append(epoch_reward)
                 break
-    print(f'test中的reward平均10个总和为：{np.sum(result)}, video_id:{env.video_idx}, trace_id:{env.trace_idx}')
+    # print(f'test中的reward平均10个总和为：{np.sum(result)}, video_id:{env.video_idx}, trace_id:{env.trace_idx}')
     best = data_load('temp_best_result')[0]
     if np.sum(result) > best:
         os.system("rm -rf " + "temp_best_result")
@@ -180,7 +186,7 @@ def train_test_plot():
     results.append(np.sum(result))
     results.append(env.video_idx)
     results.append(env.trace_idx)
-    data_write(np.reshape(results, (1, -1)), './test_log')
+    # data_write(np.reshape(results, (1, -1)), './test_log')
     # 画图部分，测试时注释掉
     index = [i for i in range(len(bandwidth))]
 
@@ -192,8 +198,16 @@ def train_test_plot():
     plt.show()
     plt.plot(index, rebuf_status)
     plt.show()
+    return np.sum(result)
 
 
 if __name__ == '__main__':
+    result = []
+    test_dateset_path = 'test_dateset/trace/'
+    cooked_files = os.listdir(test_dateset_path)
     # train_test()
-    train_test_plot()
+    for cooked_file in cooked_files:
+        file_path = test_dateset_path + cooked_file
+        result.append(train_test_plot(file_path))
+    print(f'test中的reward平均10个总和为：{np.sum(result) / len(result)}')
+    data_write(np.reshape(np.sum(result) / len(result), (1, -1)), './test_log')

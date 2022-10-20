@@ -212,7 +212,7 @@ class Worker(threading.Thread):
                 end_of_video, video_chunk_remain = self.env.get_video_chunk(bit_rate)
                 reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
                          - 10 * rebuf \
-                         - 1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
+                         - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
                                                    VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
                 done = end_of_video
                 # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息

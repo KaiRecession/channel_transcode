@@ -30,14 +30,10 @@ r_pro = [[0., 0., 0., 1.],
          [0.2, 0.6, 0.2, 0.1],
          [0.1, 0.1, 0.2, 0.6],
          [0.1, 0.1, 0.6, 0.2],
-         [0.8, 0.1, 0.1, 0.1],
-         [0.1, 0.8, 0.1, 0.1],
-         [0.1, 0.1, 0.8, 0.1],
-         [0.1, 0.1, 0.1, 0.8],
          ]
-c_pro = [[0.1, 0.8, 0.1],
-         [0.8, 0.1, 0.1],
-         [0.1, 0.1, 0.8]]
+c_pro = [[0.2, 0.6, 0.2],
+         [0.6, 0.2, 0.2],
+         [0.2, 0.2, 0.6]]
 # 这两个参数可以改变网络的波动频率
 r_change = 10  # 大波动时间
 c_change = 1  # 小波动时间
@@ -85,18 +81,19 @@ def random_N(r_prob, c_prob, num):
     return temp
 
 
-def generate_trace(num_file, time_length):
-    os.system("rm -rf " + "./dateset")
-    os.system("mkdir " + "./dateset")
+def generate_trace(num_file, time_length, filepath):
+    if os.path.exists(filepath):
+        os.system("rm -rf " + filepath)
+    os.system("mkdir " + filepath)
     for i in range(num_file):
         data = generate_CSI(time_length)
         temp_r = i % len(r_pro)
         temp_c = i % len(c_pro)
         # a = [r_pro[temp_r]]
         rate = calc_rate(data, tf.constant([r_pro[temp_r]]), tf.constant([c_pro[temp_c]]))
-        os.system("rm -rf " + "./dateset/" + str(i))
+        # os.system("rm -rf " + filepath + str(i))
         # data_write([time_length], "./dateset/" + str(i))
-        data_write(rate, "./dateset/" + str(i))
+        data_write(rate, filepath + '/trace_' + str(i))
 
 
 def generate_trace_special(time_length):
@@ -111,9 +108,10 @@ def main():
 
 
 if __name__ == '__main__':
-    generate_trace_special(60)
+    # generate_trace_special(60)
     # index = [i for i in range(10) if i % 2 == 0]
-    # generate_trace(100, 2000)
+    generate_trace(9, 60, 'test_dateset/trace')
+    generate_trace(100, 2000, 'dateset/')
     # main()
     # # print(np.log(2))
     # result = []

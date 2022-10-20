@@ -7,7 +7,7 @@ random_seed = 10
 num_video = 100
 max_num_bitrate = 5
 min_num_bitrate = 0
-max_num_chunk = 15 * 60
+max_num_chunk = 15 * 5 + 1
 min_num_chunk = 15 * 5
 length_video = 4
 VIDEO_BIT_RATE = [1000, 2000, 3000, 4000, 4750]
@@ -62,8 +62,8 @@ def generate_hls_special():
 
 if __name__ == '__main__':
     generate_hls_special()
-    # os.system("rm -rf " + "./videos")
-    # os.system("mkdir " + "./videos")
-    # # data_write([time_length], "./dateset/" + str(i))
-    # main()
+    os.system("rm -rf " + "./videos")
+    os.system("mkdir " + "./videos")
+    # data_write([time_length], "./dateset/" + str(i))
+    main()
 
