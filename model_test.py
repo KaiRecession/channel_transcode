@@ -6,6 +6,7 @@ import load_trace
 import tensorflow as tf
 import numpy as np
 
+from A3C import ActorCritic
 from data_load_fix import data_write, data_load
 import warnings
 warnings.filterwarnings('ignore')
@@ -15,13 +16,15 @@ np.random.seed(1231)
 TRAIN_TRACES = './dateset/'
 all_cooked_time, all_cooked_bw, _ = load_trace.load_trace(TRAIN_TRACES)
 VIDEO_BIT_RATE = [1000, 2000, 3000, 4000, 4750]
+model_weight = 'model/v2.ckpt'
 from tensorflow.keras import layers, optimizers, Model
-
+server = ActorCritic(6, 5)
+server.load_weights(model_weight)
 
 # 随机挑选一个轨迹和视频
 def train_test():
         import env
-        server = tf.saved_model.load('./model/0')
+        # server = tf.saved_model.load('./model/0')
         env = env.Environment(all_cooked_time=all_cooked_time,
                               all_cooked_bw=all_cooked_bw,
                               random_seed=1)
@@ -91,7 +94,7 @@ def train_test():
 # 挑选指定的视频
 def train_test_plot(trace_path):
     import env
-    server = tf.saved_model.load('./model/0')
+    # server = tf.saved_model.load('./model/0')
     env = env.Environment(all_cooked_time=all_cooked_time,
                           all_cooked_bw=all_cooked_bw,
                           random_seed=1)
@@ -173,30 +176,26 @@ def train_test_plot(trace_path):
                 result.append(epoch_reward)
                 break
     # print(f'test中的reward平均10个总和为：{np.sum(result)}, video_id:{env.video_idx}, trace_id:{env.trace_idx}')
-    best = data_load('temp_best_result')[0]
-    if np.sum(result) > best:
-        os.system("rm -rf " + "temp_best_result")
-        data_write([np.sum(result)], 'temp_best_result')
-        tf.saved_model.save(server, 'best_model/0')
+
 
     results = []
     results.append(np.sum(result))
     results.append(env.video_idx)
     results.append(env.trace_idx)
     # data_write(np.reshape(results, (1, -1)), './test_log')
-    # 画图部分，测试时注释掉
-    index = [i for i in range(len(bandwidth))]
-
-    plt.plot(index, bandwidth, color='red')
-
-    plt.plot(index, bitrate_choice)
-    plt.ylabel(trace_path)
-    plt.show()
-    plt.plot(index, buffer_status)
-    plt.show()
-    plt.plot(index, rebuf_status)
-    plt.show()
-    print(result)
+    # # 画图部分，测试时注释掉
+    # index = [i for i in range(len(bandwidth))]
+    #
+    # plt.plot(index, bandwidth, color='red')
+    #
+    # plt.plot(index, bitrate_choice)
+    # plt.ylabel(trace_path)
+    # plt.show()
+    # plt.plot(index, buffer_status)
+    # plt.show()
+    # plt.plot(index, rebuf_status)
+    # plt.show()
+    # print(result)
     return np.sum(result)
 
 
@@ -208,6 +207,13 @@ if __name__ == '__main__':
     for cooked_file in cooked_files:
         file_path = test_dateset_path + cooked_file
         result.append(train_test_plot(file_path))
-    print(f'test中的reward平均10个总和为：{np.sum(result) / len(result)}')
-    print(result)
-    data_write(np.reshape(np.sum(result) / len(result), (1, -1)), './test_log')
+    mean = np.sum(result) / len(result)
+    print(f'test中的reward平均10个总和为：{mean}')
+    # print(result)
+    data_write(np.reshape(mean, (1, -1)), './test_log')
+    best = data_load('temp_best_result')[0]
+    if mean > best:
+        os.system("rm -rf " + "temp_best_result")
+        data_write([mean], 'temp_best_result')
+        server.save_weights('best_model/v2.ckpt')
+

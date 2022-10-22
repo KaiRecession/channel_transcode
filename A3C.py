@@ -8,10 +8,11 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from tensorflow import keras
 from queue import Queue
-from tensorflow.keras import layers, optimizers, Model
+from tensorflow.keras import layers, optimizers
+from tensorflow.keras import Model
+from sklearn import model_selection
 
 import load_trace
-import model_test
 
 plt.rcParams['font.size'] = 18
 plt.rcParams['figure.titlesize'] = 18
@@ -24,6 +25,7 @@ np.random.seed(1231)
 TRAIN_TRACES = './dateset/'
 all_cooked_time, all_cooked_bw, _ = load_trace.load_trace(TRAIN_TRACES)
 VIDEO_BIT_RATE = [1000, 2000, 3000, 4000, 4750]  # Kbps
+model_weight = None
 
 
 class ActorCritic(Model):
@@ -37,7 +39,8 @@ class ActorCritic(Model):
         self.conv3 = layers.Conv1D(128, 4, activation='relu')
         self.conv4 = layers.Conv1D(128, 4, activation='relu')
         self.fc2 = layers.Dense(128, activation='relu')
-        self.fc3 = layers.Dense(action_size)
+        self.fc3 = layers.Dense(32, activation='relu')
+        self.fc4 = layers.Dense(action_size)
 
         self.fc21 = layers.Dense(128, activation='relu')
         self.conv21 = layers.Conv1D(128, 4, activation='relu')
@@ -45,7 +48,8 @@ class ActorCritic(Model):
         self.conv23 = layers.Conv1D(128, 4, activation='relu')
         self.conv24 = layers.Conv1D(128, 4, activation='relu')
         self.fc22 = layers.Dense(128, activation='relu')
-        self.fc23 = layers.Dense(1)
+        self.fc23 = layers.Dense(32, activation='relu')
+        self.fc24 = layers.Dense(1)
 
     def call(self, inputs):
         # print(inputs)
@@ -65,7 +69,8 @@ class ActorCritic(Model):
         x6 = self.fc2(inputs[:, 4:5, -1])
         x6 = tf.reshape(x6, (se, -1))
         x7 = tf.concat([x1, x2, x3, x4, x5, x6], axis=1)
-        logits = self.fc3(x7)
+        # x8 = self.fc3(x7)
+        logits = self.fc4(x7)
         # print(logits)
 
         x21 = self.fc21(inputs[:, 0:1, -1])
@@ -81,7 +86,8 @@ class ActorCritic(Model):
         x26 = self.fc22(inputs[:, 4:5, -1])
         x26 = tf.reshape(x26, (se, -1))
         x27 = tf.concat([x21, x22, x23, x24, x25, x26], axis=1)
-        values = self.fc23(x27)
+        # x28 = self.fc23(x27)
+        values = self.fc24(x27)
         # print(values)
 
         return logits, values
@@ -126,6 +132,8 @@ class Agent:
         self.opt = optimizers.Adam(1e-3)
         self.server = ActorCritic(6, 5)
         self.server(tf.random.normal((1, 6, 8)))
+        if model_weight != None:
+            self.server.load_weights(model_weight)
 
     def train(self):
         res_queue = Queue()
@@ -164,14 +172,14 @@ class Worker(threading.Thread):
         # self.env = gym.make('CartPole-v1').unwrapped
         self.env = env.Environment(all_cooked_time=all_cooked_time,
                               all_cooked_bw=all_cooked_bw,
-                              random_seed=1)
+                              random_seed=1231)
         self.ep_loss = 0.0
 
     def run(self):
         # 相当于存储一整条轨迹的类
         mem = Memory()
         # 每个worker线程的epoch次数
-        for epi_counter in range(500):
+        for epi_counter in range(50000):
             # print(f'epi_counter: {epi_counter}')
             # 初始化的时候设置值
             last_bit_rate = 1
@@ -181,6 +189,8 @@ class Worker(threading.Thread):
             video_chunk_size, next_video_chunk_sizes, \
             end_of_video, video_chunk_remain = \
                 self.env.get_video_chunk(bit_rate)
+            # 忽略第一次的延时
+            rebuf = 0.0
             mem.clear()
             epoch_reward = 0.
             epoch_steps = 0
@@ -211,7 +221,7 @@ class Worker(threading.Thread):
                 video_chunk_size, next_video_chunk_sizes, \
                 end_of_video, video_chunk_remain = self.env.get_video_chunk(bit_rate)
                 reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
-                         - 10 * rebuf \
+                         - 4.75 * rebuf \
                          - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
                                                    VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
                 done = end_of_video
@@ -237,7 +247,8 @@ class Worker(threading.Thread):
                     self.result_queue.put(epoch_reward)
                     print("epoch=%s," % epi_counter, "worker=%s," % self.worker_id, "reward=%s" % epoch_reward)
                     if self.worker_id == 0:
-                        tf.saved_model.save(self.server, 'model/0')
+                        # tf.saved_model.save(self.server, 'model/0')
+                        self.server.save_weights('model/v2.ckpt')
                         os.system('python model_test.py')
                     break
         # 放入None表示结束
