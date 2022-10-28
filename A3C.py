@@ -29,7 +29,7 @@ model_weight = None
 
 
 class ActorCritic(Model):
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, action2_size):
         super(ActorCritic, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -41,6 +41,7 @@ class ActorCritic(Model):
         self.fc2 = layers.Dense(128, activation='relu')
         self.fc3 = layers.Dense(32, activation='relu')
         self.fc4 = layers.Dense(action_size)
+        self.fc5 = layers.Dense(action2_size)
 
         self.fc21 = layers.Dense(128, activation='relu')
         self.conv21 = layers.Conv1D(128, 4, activation='relu')
@@ -71,6 +72,7 @@ class ActorCritic(Model):
         x7 = tf.concat([x1, x2, x3, x4, x5, x6], axis=1)
         # x8 = self.fc3(x7)
         logits = self.fc4(x7)
+        logits_length = self.fc5(x7)
         # print(logits)
 
         x21 = self.fc21(inputs[:, 0:1, -1])
@@ -90,7 +92,7 @@ class ActorCritic(Model):
         values = self.fc24(x27)
         # print(values)
 
-        return logits, values
+        return logits, logits_length, values
 
 
 # def record(epoch, epoch_reward, worker_id, global_epoch_reward, result_queue, total_loss, num_steps):
@@ -114,23 +116,26 @@ class Memory:
     def __init__(self):
         self.states = []
         self.actions = []
+        self.lengths = []
         self.rewards = []
 
-    def store(self, state, action, reward):
+    def store(self, state, action, length, reward):
         self.states.append(state)
         self.actions.append(action)
         self.rewards.append(reward)
+        self.lengths.append(length)
 
     def clear(self):
         self.states = []
         self.actions = []
         self.rewards = []
+        self.lengths = []
 
 
 class Agent:
     def __init__(self):
         self.opt = optimizers.Adam(1e-3)
-        self.server = ActorCritic(6, 5)
+        self.server = ActorCritic(6, 5, 5)
         self.server(tf.random.normal((1, 6, 8)))
         if model_weight != None:
             self.server.load_weights(model_weight)
@@ -167,7 +172,7 @@ class Worker(threading.Thread):
         self.result_queue = result_queue
         self.server = server
         self.opt = opt
-        self.client = ActorCritic(6, 5)
+        self.client = ActorCritic(6, 5, 5)
         self.worker_id = id
         # self.env = gym.make('CartPole-v1').unwrapped
         self.env = env.Environment(all_cooked_time=all_cooked_time,
@@ -185,55 +190,90 @@ class Worker(threading.Thread):
             last_bit_rate = 1
             bit_rate = 1
             state = np.zeros((6, 8))
+            # 1、设置初始化的length长度
+            self.env.energy.set_buffer_transcode(self.env, 1, bit_rate)
             delay, sleep_time, buffer_size, rebuf, \
             video_chunk_size, next_video_chunk_sizes, \
-            end_of_video, video_chunk_remain = \
+            end_of_video, video_chunk_remain, energy = \
                 self.env.get_video_chunk(bit_rate)
             # 忽略第一次的延时
+            # print(42432143)
             rebuf = 0.0
             mem.clear()
             epoch_reward = 0.
             epoch_steps = 0
             done = False
+            # dequeue history record
+            # 记录回滚历史状态state
+            state = np.roll(state, -1, axis=1)
+            # this should be S_INFO number of terms
+            # 除了剩余块的那一行，剩下的都是记录了过去的K个信息的，好家伙
+            state[0, -1] = VIDEO_BIT_RATE[bit_rate] / float(np.max(VIDEO_BIT_RATE))  # last quality
+            state[1, -1] = buffer_size / 10  # 10 sec
+            state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
+            # 转换成10s一格
+            state[3, -1] = float(rebuf) / 10.0  # 10 sec
+            state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
+            state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(
+                self.env.TOTAL_VIDEO_CHUNCK)
+            current_state = np.reshape(state, (1, 6, 8))
             while not done:
-                # dequeue history record
-                # 记录回滚历史状态state
-                state = np.roll(state, -1, axis=1)
-                # this should be S_INFO number of terms
-                # 除了剩余块的那一行，剩下的都是记录了过去的K个信息的，好家伙
-                state[0, -1] = VIDEO_BIT_RATE[bit_rate] / float(np.max(VIDEO_BIT_RATE))  # last quality
-                state[1, -1] = buffer_size / 10  # 10 sec
-                state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
-                # 转换成10s一格
-                state[3, -1] = float(rebuf) / 10.0  # 10 sec
-                state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
-                state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(self.env.TOTAL_VIDEO_CHUNCK)
-                current_state = np.reshape(state, (1, 6, 8))
 
-                logits, _ = self.client(tf.constant(current_state, dtype=tf.float32))
+
+                logits, logits_length, _ = self.client(tf.constant(current_state, dtype=tf.float32))
                 # print(logits)
                 probs = tf.nn.softmax(logits)
                 # print(probs)
                 # 按照概率选择action, np.random.choice中的5代表从0-5筛选
                 bit_rate = np.random.choice(5, p=probs.numpy()[0])
                 # print(action)
-                delay, sleep_time, buffer_size, rebuf, \
-                video_chunk_size, next_video_chunk_sizes, \
-                end_of_video, video_chunk_remain = self.env.get_video_chunk(bit_rate)
-                reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
-                         - 4.75 * rebuf \
-                         - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
-                                                   VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
-                done = end_of_video
-                # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
-                epoch_reward += reward
-                # 存储的state和action必须是同一对输入输出，reward也是这次action的reward
-                mem.store(current_state, bit_rate, reward)
-                # 这个step是本次轨迹走过的步数
-                epoch_steps += 1
-                last_bit_rate = bit_rate
 
-                new_state = current_state
+                probs = tf.nn.softmax(logits_length)
+                # print(probs)
+                # 按照概率选择action, np.random.choice中的5代表从0-5筛选
+                length = np.random.choice(5, p=probs.numpy()[0]) + 1
+                # 2、经过网络选择后设置未来的长度
+                self.env.energy.set_buffer_transcode(self.env, length + 1, bit_rate)
+                # print(f'self.env.energy.buffer_transcode{self.env.energy.buffer_transcode}, length{length}')
+                # print(length)
+
+                for _ in range(length):
+                    # print(f'work_id{self.worker_id}, done {done}')
+                    delay, sleep_time, buffer_size, rebuf, \
+                    video_chunk_size, next_video_chunk_sizes, \
+                    end_of_video, video_chunk_remain, energy = self.env.get_video_chunk(bit_rate)
+                    reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
+                             - 4.75 * rebuf \
+                             - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
+                    done = end_of_video
+                    # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
+                    epoch_reward += reward
+                    # 存储的state和action必须是同一对输入输出，reward也是这次action的reward
+                    mem.store(current_state, bit_rate, length, reward)
+                    # 这个step是本次轨迹走过的步数
+                    epoch_steps += 1
+                    last_bit_rate = bit_rate
+
+
+                    # dequeue history record
+                    # 记录回滚历史状态state
+                    state = np.roll(state, -1, axis=1)
+                    # this should be S_INFO number of terms
+                    # 除了剩余块的那一行，剩下的都是记录了过去的K个信息的，好家伙
+                    state[0, -1] = VIDEO_BIT_RATE[bit_rate] / float(np.max(VIDEO_BIT_RATE))  # last quality
+                    state[1, -1] = buffer_size / 10  # 10 sec
+                    state[2, -1] = float(video_chunk_size) / float(delay) / 1000.0  # kilo byte / ms
+                    # 转换成10s一格
+                    state[3, -1] = float(rebuf) / 10.0  # 10 sec
+                    state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
+                    state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(
+                        self.env.TOTAL_VIDEO_CHUNCK)
+                    current_state = np.reshape(state, (1, 6, 8))
+                    new_state = current_state
+
+                    if done:
+                        break
+
                 if done:
                     with tf.GradientTape() as tape:
                         total_loss = self.compute_loss(done, new_state, mem)
@@ -269,7 +309,7 @@ class Worker(threading.Thread):
         discounted_rewards.reverse()
         # print(tf.constant(np.vstack(memory.states)))
         # 此时得到的概率，值都是批次所得
-        logits, values = self.client(tf.constant(np.vstack(memory.states), dtype=tf.float32))
+        logits, logits_length, values = self.client(tf.constant(np.vstack(memory.states), dtype=tf.float32))
         # 计算advantage = R() - v(s)
         advantage = tf.constant(np.array(discounted_rewards)[:, None], dtype=tf.float32) - values
         value_loss = advantage ** 2
@@ -281,7 +321,14 @@ class Worker(threading.Thread):
         entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)
         # 保留一些试探性的选择，输出选项的各个概率值之间差距越大，entropy就越小，适当增大entropy，保留一些试探性的选择
         policy_loss = policy_loss - 0.01 * entropy
-        total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
+
+        policy_length = tf.nn.softmax(logits_length)
+        policy_loss_length = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=memory.lengths, logits=logits_length)
+        policy_loss_length = policy_loss_length * tf.stop_gradient(advantage)
+        entropy_length = tf.nn.softmax_cross_entropy_with_logits(labels=policy_length, logits=logits_length)
+        policy_loss_length = policy_loss_length - 0.01 * entropy_length
+
+        total_loss = tf.reduce_mean((0.5 * value_loss + (policy_loss + policy_loss_length) / 2))
         return total_loss
 
 

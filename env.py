@@ -3,6 +3,8 @@ import os
 import load_trace
 import numpy as np
 
+from energy import Energy
+
 MILLISECONDS_IN_SECOND = 1000.0
 B_IN_MB = 1000000.0
 BITS_IN_BYTE = 8.0
@@ -31,6 +33,7 @@ class Environment:
 
         self.video_chunk_counter = 0
         self.buffer_size = 0
+        self.energy = Energy()
 
         # pick a random trace file
         # 挑选一个随机的网络track
@@ -47,6 +50,8 @@ class Environment:
         self.video_files = os.listdir(VIDEO_SIZE_FILE)
         self.video_idx = 0
         self.video_size = {}  # in bytes
+        # 加入cache状态
+        self.cache_status = []
         self.TOTAL_VIDEO_CHUNCK = 0
         # 加载不同视频文件的大小
         self.set_video_size()
@@ -60,6 +65,8 @@ class Environment:
                 self.video_size[bitrate] = np.array(line.split(), dtype=int).tolist()
                 bitrate += 1
         self.TOTAL_VIDEO_CHUNCK = len(self.video_size[0])
+        for i in range(self.TOTAL_VIDEO_CHUNCK):
+            self.cache_status.append(np.random.randint(-1, 5))
 
     # MPC专用函数
     def get_video_chunk_size(self, quality, index):
@@ -112,7 +119,8 @@ class Environment:
 
         # add a multiplicative noise to the delay
         delay *= np.random.uniform(NOISE_LOW, NOISE_HIGH)
-
+        # 修改转码buffer
+        self.energy.modify_buffer_transcode(self.video_chunk_counter + 1, delay)
         # rebuffer time
         # 计算延迟时间，buffer是已经下载的视频时长
         rebuf = np.maximum(delay - self.buffer_size, 0.0)
@@ -138,6 +146,7 @@ class Environment:
                          DRAIN_BUFFER_SLEEP_TIME
             # 等待睡眠时间，把buffer消耗一点
             self.buffer_size -= sleep_time
+            self.energy.modify_buffer_transcode(self.video_chunk_counter + 1, sleep_time)
             # 把带宽轨迹的时间点跳过睡眠的时间点
             while True:
                 duration = self.cooked_time[self.mahimahi_ptr] \
@@ -160,6 +169,9 @@ class Environment:
         # In the new version the buffer always have at least
         # one chunk of video
         return_buffer_size = self.buffer_size
+        # 计算能耗和时延
+        temp_energy, temp_delay = self.energy.cacal_energy(quality, self, self.cache_status[self.video_chunk_counter])
+        delay += temp_delay
 
         self.video_chunk_counter += 1
         video_chunk_remain = self.TOTAL_VIDEO_CHUNCK - self.video_chunk_counter
@@ -192,7 +204,8 @@ class Environment:
             video_chunk_size, \
             next_video_chunk_sizes, \
             end_of_video, \
-            video_chunk_remain
+            video_chunk_remain, \
+            temp_energy
 
     # 设置了指定的网络轨迹之后同时默认指定了相应的指定测试视频块
     def test_chunk(self, cooked_time, cooked_bw):
@@ -209,7 +222,7 @@ class Environment:
                 bitrate += 1
         self.TOTAL_VIDEO_CHUNCK = len(self.video_size[0])
 
-def test():
+def ftest():
     video_files = os.listdir(VIDEO_SIZE_FILE)
     for video_file in video_files:
         file_path = VIDEO_SIZE_FILE + video_file
@@ -223,15 +236,17 @@ def test():
 
 
 if __name__ == '__main__':
-    # test()
     all_cooked_time, all_cooked_bw, _ = load_trace.load_trace(TRAIN_TRACES)
     net_env = Environment(all_cooked_time=all_cooked_time,
                               all_cooked_bw=all_cooked_bw,
                               random_seed=1)
+    net_env.set_buffer_transcode(5, 2)
     while True:
         delay, sleep_time, buffer_size, rebuf, \
         video_chunk_size, next_video_chunk_sizes, \
         end_of_video, video_chunk_remain = \
             net_env.get_video_chunk(0)
+        net_env.set_buffer_transcode(3, 2)
+        print(134)
 
     print(net_env)

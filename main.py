@@ -5,6 +5,11 @@ import tensorflow
 def print_hi(name):
     # Use a breakpoint in the code line below to debug your script.
     s_batch = [np.zeros((6, 8))]
+    hashtest = {}
+    hashtest[1] = 1
+    hashtest[3] = 2
+    print(hashtest.get(1))
+
     a = [[1, 2, 4],
          [2, 3, 4],
          [7, 8, 9]]
