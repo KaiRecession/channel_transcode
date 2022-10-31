@@ -194,8 +194,14 @@ class Environment:
             self.set_video_size()
 
         next_video_chunk_sizes = []
+        next_video_chunk_buffer_status = []
         for i in range(BITRATE_LEVELS):
-            next_video_chunk_sizes.append(self.video_size[i][self.video_chunk_counter])
+            if (self.video_chunk_counter + i < self.TOTAL_VIDEO_CHUNCK):
+                next_video_chunk_sizes.append(self.video_size[4][self.video_chunk_counter + i])
+                next_video_chunk_buffer_status.append(self.cache_status[self.video_chunk_counter + i])
+            else:
+                next_video_chunk_sizes.append(0.0)
+                next_video_chunk_buffer_status.append(0)
 
         return delay, \
             sleep_time, \
@@ -205,7 +211,8 @@ class Environment:
             next_video_chunk_sizes, \
             end_of_video, \
             video_chunk_remain, \
-            temp_energy
+            temp_energy, \
+            next_video_chunk_buffer_status
 
     # 设置了指定的网络轨迹之后同时默认指定了相应的指定测试视频块
     def test_chunk(self, cooked_time, cooked_bw):

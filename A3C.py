@@ -38,6 +38,7 @@ class ActorCritic(Model):
         self.conv2 = layers.Conv1D(128, 4, activation='relu')
         self.conv3 = layers.Conv1D(128, 4, activation='relu')
         self.conv4 = layers.Conv1D(128, 4, activation='relu')
+        self.conv5 = layers.Conv1D(125, 4, activation='relu')
         self.fc2 = layers.Dense(128, activation='relu')
         self.fc3 = layers.Dense(32, activation='relu')
         self.fc4 = layers.Dense(action_size)
@@ -48,6 +49,7 @@ class ActorCritic(Model):
         self.conv22 = layers.Conv1D(128, 4, activation='relu')
         self.conv23 = layers.Conv1D(128, 4, activation='relu')
         self.conv24 = layers.Conv1D(128, 4, activation='relu')
+        self.conv25 = layers.Conv1D(128, 4, activation='relu')
         self.fc22 = layers.Dense(128, activation='relu')
         self.fc23 = layers.Dense(32, activation='relu')
         self.fc24 = layers.Dense(1)
@@ -67,9 +69,11 @@ class ActorCritic(Model):
         x4 = tf.reshape(x4, (se, -1))
         x5 = self.conv4(tf.reshape(inputs[:, 4:5, :5], (se, -1, 1)))
         x5 = tf.reshape(x5, (se, -1))
+        x8 = self.conv5(tf.reshape(inputs[:, 6:7, :5], (se, -1, 1)))
+        x8 = tf.reshape(x8, (se, -1))
         x6 = self.fc2(inputs[:, 4:5, -1])
         x6 = tf.reshape(x6, (se, -1))
-        x7 = tf.concat([x1, x2, x3, x4, x5, x6], axis=1)
+        x7 = tf.concat([x1, x2, x3, x4, x5, x6, x8], axis=1)
         # x8 = self.fc3(x7)
         logits = self.fc4(x7)
         logits_length = self.fc5(x7)
@@ -85,9 +89,11 @@ class ActorCritic(Model):
         x24 = tf.reshape(x24, (se, -1))
         x25 = self.conv24(tf.reshape(inputs[:, 4:5, :5], (se, -1, 1)))
         x25 = tf.reshape(x25, (se, -1))
+        x28 = self.conv25(tf.reshape(inputs[:, 6:7, :5], (se, -1, 1)))
+        x28 = tf.reshape(x28, (se, -1))
         x26 = self.fc22(inputs[:, 4:5, -1])
         x26 = tf.reshape(x26, (se, -1))
-        x27 = tf.concat([x21, x22, x23, x24, x25, x26], axis=1)
+        x27 = tf.concat([x21, x22, x23, x24, x25, x26, x28], axis=1)
         # x28 = self.fc23(x27)
         values = self.fc24(x27)
         # print(values)
@@ -135,13 +141,16 @@ class Memory:
 class Agent:
     def __init__(self):
         self.opt = optimizers.Adam(1e-3)
-        self.server = ActorCritic(6, 5, 5)
-        self.server(tf.random.normal((1, 6, 8)))
-        if model_weight != None:
-            self.server.load_weights(model_weight)
+        self.server = ActorCritic(7, 5, 5)
+        self.server(tf.random.normal((1, 7, 8)))
+        # self.server.summary()
+        # if model_weight != None:
+        #     self.server.load_weights(model_weight)
 
     def train(self):
         res_queue = Queue()
+        workers = [Worker(self.server, self.opt, res_queue, i)
+                   for i in range(1)]
         workers = [Worker(self.server, self.opt, res_queue, i)
                    for i in range(multiprocessing.cpu_count())]
         for i, worker in enumerate(workers):
@@ -172,7 +181,9 @@ class Worker(threading.Thread):
         self.result_queue = result_queue
         self.server = server
         self.opt = opt
-        self.client = ActorCritic(6, 5, 5)
+        self.client = ActorCritic(7, 5, 5)
+        # self.client(tf.random.normal((1, 7, 8)))
+        # self.client.summary()
         self.worker_id = id
         # self.env = gym.make('CartPole-v1').unwrapped
         self.env = env.Environment(all_cooked_time=all_cooked_time,
@@ -185,16 +196,16 @@ class Worker(threading.Thread):
         mem = Memory()
         # 每个worker线程的epoch次数
         for epi_counter in range(50000):
-            # print(f'epi_counter: {epi_counter}')
+            print(f'epi_counter: {epi_counter}')
             # 初始化的时候设置值
             last_bit_rate = 1
             bit_rate = 1
-            state = np.zeros((6, 8))
+            state = np.zeros((7, 8))
             # 1、设置初始化的length长度
             self.env.energy.set_buffer_transcode(self.env, 1, bit_rate)
             delay, sleep_time, buffer_size, rebuf, \
             video_chunk_size, next_video_chunk_sizes, \
-            end_of_video, video_chunk_remain, energy = \
+            end_of_video, video_chunk_remain, energy, next_video_chunk_buffer_status = \
                 self.env.get_video_chunk(bit_rate)
             # 忽略第一次的延时
             # print(42432143)
@@ -216,7 +227,8 @@ class Worker(threading.Thread):
             state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
             state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(
                 self.env.TOTAL_VIDEO_CHUNCK)
-            current_state = np.reshape(state, (1, 6, 8))
+            state[6, :5] = np.array(next_video_chunk_buffer_status) / 4.0
+            current_state = np.reshape(state, (1, 7, 8))
             while not done:
 
 
@@ -241,7 +253,7 @@ class Worker(threading.Thread):
                     # print(f'work_id{self.worker_id}, done {done}')
                     delay, sleep_time, buffer_size, rebuf, \
                     video_chunk_size, next_video_chunk_sizes, \
-                    end_of_video, video_chunk_remain, energy = self.env.get_video_chunk(bit_rate)
+                    end_of_video, video_chunk_remain, energy, next_video_chunk_buffer_status = self.env.get_video_chunk(bit_rate)
                     reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
                              - 4.75 * rebuf \
                              - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
@@ -268,15 +280,14 @@ class Worker(threading.Thread):
                     state[4, :5] = np.array(next_video_chunk_sizes) / 1000.0 / 1000.0  # mega byte
                     state[5, -1] = np.minimum(video_chunk_remain, self.env.TOTAL_VIDEO_CHUNCK) / float(
                         self.env.TOTAL_VIDEO_CHUNCK)
-                    current_state = np.reshape(state, (1, 6, 8))
+                    state[6, :5] = np.array(next_video_chunk_buffer_status) / 4.0
+                    current_state = np.reshape(state, (1, 7, 8))
                     new_state = current_state
 
-                    if done:
-                        break
-
                 if done:
+                    print(111)
                     with tf.GradientTape() as tape:
-                        total_loss = self.compute_loss(done, new_state, mem)
+                        total_loss = self.compute_loss(done, current_state, mem)
                     # worker线程的梯度拿出来
                     grads = tape.gradient(total_loss, self.client.trainable_variables)
                     # 把worker线程的梯度给server更新参数
@@ -329,6 +340,7 @@ class Worker(threading.Thread):
         policy_loss_length = policy_loss_length - 0.01 * entropy_length
 
         total_loss = tf.reduce_mean((0.5 * value_loss + (policy_loss + policy_loss_length) / 2))
+        # print(total_loss)
         return total_loss
 
 
