@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 
 def main():
-    best = data_load('test_log')
+    best = data_load('testlogs/test_log')
     print(len(best))
     index = [i for i in range(len(best))]
     MPC = [254, 114, 308, 252, 331, 300, 309, 331, 31]

@@ -16,8 +16,8 @@ np.random.seed(1231)
 TRAIN_TRACES = './dateset/'
 all_cooked_time, all_cooked_bw, _ = load_trace.load_trace(TRAIN_TRACES)
 VIDEO_BIT_RATE = [1000, 2000, 3000, 4000, 4750]
-model_weight = 'model/v2.ckpt'
-from tensorflow.keras import layers, optimizers, Model
+model_weight = 'model/1/v3.ckpt'
+from tensorflow.python.keras import layers, optimizers, Model
 server = ActorCritic(7, 5, 5)
 server.load_weights(model_weight)
 
@@ -125,7 +125,7 @@ def train_test():
         results.append(np.sum(result))
         results.append(env.video_idx)
         results.append(env.trace_idx)
-        data_write(np.reshape(results, (1, -1)), './test_log')
+        data_write(np.reshape(results, (1, -1)), 'testlogs/test_log')
 
 
 # 挑选指定的视频
@@ -154,6 +154,7 @@ def train_test_plot(trace_path):
     buffer_status = []
     rebuf_status = []
     reward_record = []
+    length_recode = []
     for epi_counter in range(1):
         # print(f'epi_counter: {epi_counter}')
         # 初始化的时候设置值
@@ -201,6 +202,7 @@ def train_test_plot(trace_path):
             length = np.random.choice(5, p=probs.numpy()[0]) + 1
             # 2、经过网络选择后设置未来的长度
             env.energy.set_buffer_transcode(env, length + 1, bit_rate)
+            # print(length)
 
             for _ in range(length):
 
@@ -213,7 +215,8 @@ def train_test_plot(trace_path):
                 reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
                          - 10 * rebuf \
                          - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] -
-                                      VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
+                                      VIDEO_BIT_RATE[last_bit_rate]) / 1000.0 \
+                         - 0.001 * energy
                 done = end_of_video
                 # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
                 epoch_reward += reward
@@ -241,6 +244,7 @@ def train_test_plot(trace_path):
                 bitrate_choice.append(VIDEO_BIT_RATE[bit_rate])
                 buffer_status.append(state[1, -1] * 10)
                 rebuf_status.append(rebuf)
+                length_recode.append(length)
                 new_state = current_state
                 if done:
                     result.append(epoch_reward)
@@ -257,9 +261,10 @@ def train_test_plot(trace_path):
     # index = [i for i in range(len(bandwidth))]
     #
     # plt.plot(index, bandwidth, color='red')
-    #
     # plt.plot(index, bitrate_choice)
     # plt.ylabel(trace_path)
+    # plt.show()
+    # plt.plot(index, length_recode, color='green')
     # plt.show()
     # plt.plot(index, buffer_status)
     # plt.show()
@@ -280,7 +285,7 @@ if __name__ == '__main__':
     mean = np.sum(result) / len(result)
     print(f'test中的reward平均10个总和为：{mean}')
     # print(result)
-    data_write(np.reshape(mean, (1, -1)), './test_log')
+    data_write(np.reshape(mean, (1, -1)), 'testlogs/test_log')
     best = data_load('temp_best_result')[0]
     if mean > best:
         os.system("rm -rf " + "temp_best_result")

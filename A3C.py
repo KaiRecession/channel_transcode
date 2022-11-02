@@ -8,9 +8,9 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from tensorflow import keras
 from queue import Queue
-from tensorflow.keras import layers, optimizers
-from tensorflow.keras import Model
-from sklearn import model_selection
+from keras import layers, optimizers
+from keras import Model
+
 
 import load_trace
 
@@ -149,8 +149,8 @@ class Agent:
 
     def train(self):
         res_queue = Queue()
-        workers = [Worker(self.server, self.opt, res_queue, i)
-                   for i in range(1)]
+        # workers = [Worker(self.server, self.opt, res_queue, i)
+        #            for i in range(1)]
         workers = [Worker(self.server, self.opt, res_queue, i)
                    for i in range(multiprocessing.cpu_count())]
         for i, worker in enumerate(workers):
@@ -195,8 +195,8 @@ class Worker(threading.Thread):
         # 相当于存储一整条轨迹的类
         mem = Memory()
         # 每个worker线程的epoch次数
-        for epi_counter in range(50000):
-            print(f'epi_counter: {epi_counter}')
+        for epi_counter in range(5000):
+            # print(f'epi_counter: {epi_counter}')
             # 初始化的时候设置值
             last_bit_rate = 1
             bit_rate = 1
@@ -230,8 +230,6 @@ class Worker(threading.Thread):
             state[6, :5] = np.array(next_video_chunk_buffer_status) / 4.0
             current_state = np.reshape(state, (1, 7, 8))
             while not done:
-
-
                 logits, logits_length, _ = self.client(tf.constant(current_state, dtype=tf.float32))
                 # print(logits)
                 probs = tf.nn.softmax(logits)
@@ -256,12 +254,16 @@ class Worker(threading.Thread):
                     end_of_video, video_chunk_remain, energy, next_video_chunk_buffer_status = self.env.get_video_chunk(bit_rate)
                     reward = VIDEO_BIT_RATE[bit_rate] / 1000.0 \
                              - 4.75 * rebuf \
-                             - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate]) / 1000.0
+                             - 0.1 * np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate]) / 1000.0 \
+                             - 0.001 * energy
+                    # print(f'reward{reward}, rebuf{rebuf}, np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate]){np.abs(VIDEO_BIT_RATE[bit_rate] - VIDEO_BIT_RATE[last_bit_rate])}')
                     done = end_of_video
+                    # print(video_chunk_size)
+
                     # 相当于word里面的一次轨迹的reward总和，就是为了方便展示信息
                     epoch_reward += reward
                     # 存储的state和action必须是同一对输入输出，reward也是这次action的reward
-                    mem.store(current_state, bit_rate, length, reward)
+                    mem.store(current_state, bit_rate, length - 1, reward)
                     # 这个step是本次轨迹走过的步数
                     epoch_steps += 1
                     last_bit_rate = bit_rate
@@ -283,9 +285,10 @@ class Worker(threading.Thread):
                     state[6, :5] = np.array(next_video_chunk_buffer_status) / 4.0
                     current_state = np.reshape(state, (1, 7, 8))
                     new_state = current_state
+                    if done:
+                        break
 
                 if done:
-                    print(111)
                     with tf.GradientTape() as tape:
                         total_loss = self.compute_loss(done, current_state, mem)
                     # worker线程的梯度拿出来
@@ -295,11 +298,12 @@ class Worker(threading.Thread):
                     # 把server参数更新到client
                     self.client.set_weights(self.server.get_weights())
                     mem.clear()
-                    self.result_queue.put(epoch_reward)
-                    print("epoch=%s," % epi_counter, "worker=%s," % self.worker_id, "reward=%s" % epoch_reward)
+                    self.result_queue.put(epoch_reward / self.env.TOTAL_VIDEO_CHUNCK)
+                    # print(self.env.TOTAL_VIDEO_CHUNCK)
+                    print("epoch=%s," % epi_counter, "worker=%s," % self.worker_id, "reward=%s" % (epoch_reward / self.env.TOTAL_VIDEO_CHUNCK))
                     if self.worker_id == 0:
                         # tf.saved_model.save(self.server, 'model/0')
-                        self.server.save_weights('model/v2.ckpt')
+                        self.server.save_weights('model/1/v3.ckpt')
                         os.system('python model_test.py')
                     break
         # 放入None表示结束
